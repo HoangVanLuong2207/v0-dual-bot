@@ -139,21 +139,23 @@ async function handleTavilyToGemini(messages: any[], model: string, stream: bool
         .map((result: any, index: number) => `${index + 1}. ${result.title}\n${result.content}\nNguồn: ${result.url}`)
         .join("\n\n")
 
-      enhancedPrompt = `Bạn là một AI assistant thông minh và hữu ích. Dựa trên thông tin tìm kiếm mới nhất sau đây, hãy trả lời câu hỏi một cách chi tiết, chính xác và có cấu trúc:
+      enhancedPrompt = `Bạn là một AI assistant chuyên nghiệp. Dựa trên thông tin tìm kiếm sau đây, hãy trả lời câu hỏi một cách chi tiết và chính xác:
 
 THÔNG TIN TÌM KIẾM:
 ${searchContext}
 
 CÂU HỎI: ${userQuestion}
 
-YÊU CẦU TRẢ LỜI:
+HƯỚNG DẪN TRẢ LỜI:
 - Phân tích và tổng hợp thông tin từ các nguồn đáng tin cậy
 - Trình bày theo cấu trúc rõ ràng với các điểm chính
-- Sử dụng danh sách đánh số khi cần thiết
-- Trích dẫn nguồn cụ thể khi có thể
+- Sử dụng danh sách đánh số (1. 2. 3.) khi cần thiết
+- Trích dẫn nguồn cụ thể ở cuối mỗi ý khi có thể
 - Đưa ra nhận xét hoặc phân tích sâu hơn nếu phù hợp
 - Trả lời bằng tiếng Việt với ngôn ngữ chuyên nghiệp
-- Không sử dụng ký hiệu đặc biệt hoặc markdown formatting`
+- KHÔNG sử dụng ký hiệu **, ##, ###, hoặc bất kỳ markdown nào
+- KHÔNG sử dụng emoji hoặc ký hiệu đặc biệt
+- Chỉ sử dụng văn bản thuần túy với định dạng đơn giản`
     }
 
     // Step 4: Process messages for Gemini with enhanced prompt
@@ -165,7 +167,10 @@ YÊU CẦU TRẢ LỜI:
 
     // Step 5: Call Gemini
     console.log("[Tavily-to-Gemini] Step 2: Calling Gemini")
-    const geminiModel = genAI.getGenerativeModel({ model })
+    const geminiModel = genAI.getGenerativeModel({ 
+      model,
+      systemInstruction: "Bạn là một AI assistant chuyên nghiệp. Trả lời bằng tiếng Việt, sử dụng văn bản thuần túy không có markdown, không có ký hiệu **, ##, ###, không có emoji. Chỉ sử dụng định dạng đơn giản với danh sách đánh số (1. 2. 3.) và bullet points (•) khi cần thiết."
+    })
 
     const result = await geminiModel.generateContent({
       contents: processedMessages.map((msg) => ({
@@ -179,11 +184,28 @@ YÊU CẦU TRẢ LỜI:
     })
 
     const response = await result.response
-    const text = response.text()
+    let text = response.text()
+
+    // Post-process: Clean up markdown and special characters
+    text = text
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
+      .replace(/\*(.*?)\*/g, '$1') // Remove *italic*
+      .replace(/#{1,6}\s*/g, '') // Remove headers ###
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/`([^`]+)`/g, '$1') // Remove inline code
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove markdown links, keep text
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, '') // Remove images
+      .replace(/^\s*[-*+]\s+/gm, '• ') // Convert markdown lists to bullet points
+      .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines to double
+      .replace(/^\s+|\s+$/g, '') // Trim whitespace
+      .replace(/[^\u0000-\u007F\u00C0-\u017F\u1EA0-\u1EF9\u0102\u0103\u00C2\u00CA\u00D4\u00E2\u00EA\u00F4\u00C1\u00C9\u00CD\u00D3\u00DA\u00DD\u00E1\u00E9\u00ED\u00F3\u00FA\u00FD\u00C3\u00E3\u00C4\u00E4\u00C5\u00E5\u00C6\u00E6\u00C7\u00E7\u00C8\u00E8\u00CB\u00EB\u00CE\u00EE\u00CF\u00EF\u00D1\u00F1\u00D2\u00F2\u00D5\u00F5\u00D6\u00F6\u00D8\u00F8\u00D9\u00F9\u00DC\u00FC\u00DF]/g, '') // Keep only basic Latin and Vietnamese characters
+      .trim()
 
     console.log("[Tavily-to-Gemini] Completed:", {
       textLength: text.length,
       searchResultsCount: searchResults?.results?.length || 0,
+      cleanedText: text.substring(0, 200) + "...",
     })
 
     return NextResponse.json({
