@@ -52,7 +52,7 @@ import { isImageFile, SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, type FileContent, pro
 
 type Role = "user" | "assistant"
 type Model = "chatgpt" | "gemini"
-type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini"
+type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini" | "perplexity-to-gemini"
 
 type ChatMessage = {
   id: string
@@ -1367,6 +1367,21 @@ export default function Page() {
                           Đang hoạt động
                         </span>
                       )}
+                    </DropdownMenuCheckboxItem>
+
+                    <DropdownMenuCheckboxItem
+                        checked={selectedWorkflow === "perplexity-to-gemini"}
+                        onCheckedChange={() =>
+                            setSelectedWorkflow("perplexity-to-gemini")
+                        }
+                    >
+                        <Search className="mr-2 h-4 w-4 text-green-600" />
+                        Perplexity → Gemini
+                        {selectedWorkflow === "perplexity-to-gemini" && (
+                            <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                Đang hoạt động
+                            </span>
+                        )}
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "chatgpt-to-gemini"}
