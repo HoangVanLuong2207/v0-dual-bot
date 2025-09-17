@@ -454,27 +454,27 @@ async function handleTavilyToGemini(messages: any[], model: string, stream: bool
     // Step 3: Build enhanced prompt with search results
     let enhancedPrompt = userQuestion
 
-    if (searchResults && searchResults.results && searchResults.results.length > 0) {
-      const searchContext = searchResults.results
-        .map((result: any, index: number) => `${index + 1}. ${result.title}\n${result.content}\nNguồn: ${result.url}`)
-        .join("\n\n")
+    if (searchResults?.answer || searchResults?.results?.length > 0) {
+      const searchContent = searchResults.answer || 
+        searchResults.results
+          .map((r: any, i: number) => `[Nguồn ${i + 1}]: ${r.content}`)
+          .join('\n\n')
 
-      enhancedPrompt = `Bạn là một AI assistant chuyên nghiệp. Dựa trên thông tin tìm kiếm sau đây, hãy trả lời câu hỏi một cách chi tiết và chính xác:
+      enhancedPrompt = `Bạn là một AI assistant chuyên nghiệp. Dựa trên thông tin tìm kiếm từ Tavily dưới đây, hãy trả lời câu hỏi một cách chi tiết và chính xác:
 
-THÔNG TIN TÌM KIẾM:
-${searchContext}
+THÔNG TIN TÌM KIẾM TỪ TAVILY:
+${searchContent}
 
 CÂU HỎI: ${userQuestion}
 
-HƯỚNG DẪN TRẢ LỜI:
-- Phân tích và tổng hợp thông tin từ các nguồn đáng tin cậy
-- Trình bày theo cấu trúc rõ ràng với các điểm chính
-- Sử dụng danh sách đánh số (1. 2. 3.) khi liệt kê
-- Đưa ra nhận xét hoặc phân tích sâu hơn nếu phù hợp
-- Trả lời bằng tiếng Việt với ngôn ngữ chuyên nghiệp
-- KHÔNG sử dụng ký hiệu **, ##, ###, hoặc bất kỳ markdown nào
-- KHÔNG sử dụng emoji hoặc ký hiệu đặc biệt
-- Chỉ sử dụng văn bản thuần túy với định dạng đơn giản`
+YÊU CẦU:
+1. Phân tích và tóm tắt thông tin từ kết quả tìm kiếm
+2. Bổ sung kiến thức chuyên sâu nếu cần thiết
+3. Trình bày theo cấu trúc rõ ràng, dễ hiểu
+4. Đưa ra kết luận hoặc khuyến nghị nếu phù hợp
+5. Trả lời bằng tiếng Việt với ngôn ngữ chuyên nghiệp
+6. KHÔNG sử dụng markdown, chỉ dùng văn bản thuần
+7. Nếu có thể, hãy trích dẫn nguồn thông tin cụ thể`
     }
 
     // Step 4: Process messages for Gemini with enhanced prompt
@@ -488,7 +488,7 @@ HƯỚNG DẪN TRẢ LỜI:
     console.log("[Tavily-to-Gemini] Step 2: Calling Gemini")
     const geminiModel = genAI.getGenerativeModel({ 
       model,
-      systemInstruction: "Bạn là một AI assistant chuyên nghiệp. Trả lời bằng tiếng Việt, sử dụng văn bản thuần túy không có markdown, không có ký hiệu **, ##, ###, không có emoji. Chỉ sử dụng định dạng đơn giản với danh sách đánh số (1. 2. 3.) khi liệt kê và bullet points (•) khi liệt kê danh sách."
+      systemInstruction: "Bạn là một AI assistant chuyên nghiệp. Hãy phân tích thông tin từ kết quả tìm kiếm và cung cấp câu trả lời chi tiết, chính xác. Sử dụng văn bản thuần, không markdown, không emoji. Định dạng rõ ràng với các gạch đầu dòng và đánh số khi cần thiết."
     })
 
     const result = await geminiModel.generateContent({
@@ -517,14 +517,14 @@ HƯỚNG DẪN TRẢ LỜI:
       .replace(/^\s*[-*+]\s+/gm, '• ') // Convert markdown lists to bullet points
       .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
       .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines to double
-      .replace(/^\s+|\s+$/g, '') // Trim whitespace
-      .replace(/[^\u0000-\u007F\u00C0-\u017F\u1EA0-\u1EF9\u0102\u0103\u00C2\u00CA\u00D4\u00E2\u00EA\u00F4\u00C1\u00C9\u00CD\u00D3\u00DA\u00DD\u00E1\u00E9\u00ED\u00F3\u00FA\u00FD\u00C3\u00E3\u00C4\u00E4\u00C5\u00E5\u00C6\u00E6\u00C7\u00E7\u00C8\u00E8\u00CB\u00EB\u00CE\u00EE\u00CF\u00EF\u00D1\u00F1\u00D2\u00F2\u00D5\u00F5\u00D6\u00F6\u00D8\u00F8\u00D9\u00F9\u00DC\u00FC\u00DF]/g, '') // Keep only basic Latin and Vietnamese characters
+      .replace(/\s+\n/g, '\n') // Remove whitespace at the end of lines
       .trim()
 
     console.log("[Tavily-to-Gemini] Completed:", {
-      textLength: text.length,
-      searchResultsCount: searchResults?.results?.length || 0,
-      cleanedText: text.substring(0, 200) + "...",
+      questionLength: userQuestion.length,
+      answerLength: text.length,
+      searchResults: searchResults?.results?.length || 0,
+      preview: text.substring(0, 200) + "...",
     })
 
     return NextResponse.json({
