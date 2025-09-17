@@ -206,10 +206,22 @@ YÊU CẦU TRẢ LỜI:
     })
 
     const response = await result.response
-    const text = response.text()
+    let text = response.text()
+    
+    // Clean up any remaining markdown characters
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold
+      .replace(/\*(.*?)\*/g, '$1')       // Remove italic
+      .replace(/`(.*?)`/g, '$1')          // Remove inline code
+      .replace(/^#+\s+/gm, '')           // Remove headings
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // Remove links but keep text
+      .replace(/^[-*+]\s+/gm, '')        // Remove list markers
+      .replace(/\n{3,}/g, '\n\n')       // Normalize multiple newlines
+      .trim();
 
     console.log("[Tavily-to-Gemini] Completed:", {
-      textLength: text.length,
+      originalLength: text.length,
+      cleanedLength: cleanText.length,
       searchResultsCount: searchResults?.results?.length || 0,
     })
 
@@ -217,7 +229,7 @@ YÊU CẦU TRẢ LỜI:
       candidates: [
         {
           content: {
-            parts: [{ text }],
+            parts: [{ text: cleanText }],
             role: "model",
           },
           finishReason: "STOP",
@@ -227,7 +239,7 @@ YÊU CẦU TRẢ LỜI:
         {
           message: {
             role: "assistant",
-            content: text,
+            content: cleanText,
           },
         },
       ],
@@ -373,10 +385,34 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
       },
     ]
 
-    const geminiModel = genAI.getGenerativeModel({ model })
+    // Create system instruction with clear formatting rules
+    const systemInstruction = {
+      role: 'user',
+      parts: [{
+        text: 'Bạn là một trợ lý AI hữu ích. Khi trả lời câu hỏi, vui lòng tuân thủ các yêu cầu sau:\n' +
+          '1. Không sử dụng bất kỳ định dạng markdown nào (không **, ##, ```, v.v.)\n' +
+          '2. Trả lời bằng văn bản thuần, không cần xuống dòng thừa\n' +
+          '3. Sử dụng các dấu gạch đầu dòng (-) thay vì đánh số nếu cần liệt kê\n' +
+          '4. Trả lời bằng tiếng Việt\n' +
+          '5. Giữ câu trả lời ngắn gọn, súc tích\n\n' +
+          'LƯU Ý QUAN TRỌNG: Khi trả lời, TUYỆT ĐỐI KHÔNG sử dụng bất kỳ định dạng markdown nào. ' +
+          'Chỉ trả lời bằng văn bản thuần. Nếu cần liệt kê, hãy dùng dấu gạch đầu dòng (-) thay vì đánh số.'
+      }]
+    };
+
+    const geminiModel = genAI.getGenerativeModel({ 
+      model,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 1000,
+      }
+    });
+
+    // Add system instruction as the first message
+    const processedMessages = [systemInstruction, ...processedContents];
 
     const result = await geminiModel.generateContent({
-      contents: processedContents,
+      contents: processedMessages,
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 1000,
@@ -384,18 +420,30 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
     })
 
     const response = await result.response
-    const text = response.text()
+    let text = response.text()
+    
+    // Clean up any remaining markdown characters
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold
+      .replace(/\*(.*?)\*/g, '$1')       // Remove italic
+      .replace(/`(.*?)`/g, '$1')          // Remove inline code
+      .replace(/^#+\s+/gm, '')           // Remove headings
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // Remove links but keep text
+      .replace(/^[-*+]\s+/gm, '')        // Remove list markers
+      .replace(/\n{3,}/g, '\n\n')       // Normalize multiple newlines
+      .trim();
 
     console.log("Google Gemini SDK response received:", {
-      textLength: text.length,
-      textPreview: text.substring(0, 200) + "...",
+      originalLength: text.length,
+      cleanedLength: cleanText.length,
+      textPreview: cleanText.substring(0, 200) + (cleanText.length > 200 ? "..." : ""),
     })
 
     return NextResponse.json({
       candidates: [
         {
           content: {
-            parts: [{ text }],
+            parts: [{ text: cleanText }],
             role: "model",
           },
           finishReason: "STOP",
@@ -407,7 +455,7 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
         {
           message: {
             role: "assistant",
-            content: text,
+            content: cleanText,
           },
         },
       ],
@@ -662,10 +710,22 @@ YÊU CẦU TRẢ LỜI:
     })
 
     const response = await result.response
-    const text = response.text()
+    let text = response.text()
+    
+    // Clean up any remaining markdown characters
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold
+      .replace(/\*(.*?)\*/g, '$1')       // Remove italic
+      .replace(/`(.*?)`/g, '$1')          // Remove inline code
+      .replace(/^#+\s+/gm, '')           // Remove headings
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // Remove links but keep text
+      .replace(/^[-*+]\s+/gm, '')        // Remove list markers
+      .replace(/\n{3,}/g, '\n\n')       // Normalize multiple newlines
+      .trim();
 
     console.log("[Perplexity-to-Gemini] Completed:", {
-      textLength: text.length,
+      originalLength: text.length,
+      cleanedLength: cleanText.length,
       searchResultsCount: searchResults?.results?.length || 0,
     })
 
@@ -673,7 +733,7 @@ YÊU CẦU TRẢ LỜI:
       candidates: [
         {
           content: {
-            parts: [{ text }],
+            parts: [{ text: cleanText }],
             role: "model",
           },
           finishReason: "STOP",
@@ -683,7 +743,7 @@ YÊU CẦU TRẢ LỜI:
         {
           message: {
             role: "assistant",
-            content: text,
+            content: cleanText,
           },
         },
       ],
@@ -997,7 +1057,7 @@ async function processMessagesForOpenAI(messages: any[], files: any[]) {
   return processedMessages
 }
 
-const CONTENT_SYSTEM: string = `
+const CONTENT_SYSTEM = `
 Bạn là Chatbot ORS. Nhiệm vụ: nhận câu hỏi của user, sinh ra prompt đơn giản cho Gemini.
 LUỒNG XỬ LÝ:
 User hỏi → Bạn tạo prompt → Prompt gửi cho Gemini → Gemini trả lời
@@ -1006,22 +1066,13 @@ QUY TẮC SINH PROMPT:
 1. Nếu user chỉ chào hỏi (hi, hello, xin chào) → Trả lời: "Xin chào! Tôi có thể giúp gì cho bạn?"
 
 2. Nếu user hỏi thông tin → Sinh prompt theo mẫu này:
-"Trả lời câu hỏi: [câu hỏi user]
-
-Yêu cầu:
-- Không dùng ký hiệu đặc biệt, không markdown
-- Có số liệu báo cáo nếu có
-- Hiển thị ý chính đúng trọng tâm, ví dụ: đánh số 1. 2. 3.
-- Mỗi ý: 1 câu tóm tắt + 1-2 câu giải thích
-- Nếu có chỉ dẫn nguồn, số liệu thì Cuối mỗi ý ghi nguồn: <br /><strong>Nguồn:</strong> <a href='[link]' target='_blank'>[tên]</a>
-Không có nguồn thì không ghi.
-- Viết bằng tiếng Việt"
+"Bạn là một trợ lý AI hữu ích. Hãy trả lời câu hỏi sau một cách rõ ràng, dễ hiểu:\n\nCâu hỏi: [câu hỏi user]\n\nYêu cầu:\n- Không sử dụng bất kỳ ký hiệu markdown nào như **, ##, \`\`\`, v.v.\n- Trình bày thông tin rõ ràng, mạch lạc\n- Sử dụng các số thứ tự (1, 2, 3) để liệt kê các ý chính\n- Mỗi ý chính nên có phần tóm tắt ngắn gọn và giải thích chi tiết\n- Nếu có nguồn tham khảo, hãy ghi rõ ở cuối câu trả lời\n- Luôn trả lời bằng tiếng Việt\n- Tuyệt đối không sử dụng bất kỳ ký hiệu đặc biệt nào để định dạng văn bản"
 
 CHÚ Ý:
-- [chủ đề] = thay bằng lĩnh vực phù hợp (tài chính, giáo dục, y tế, ngân hàng...)
 - [câu hỏi user] = copy y nguyên câu hỏi của user
 - Chỉ xuất prompt, không giải thích gì thêm
-`
+- Đảm bảo prompt yêu cầu Gemini không sử dụng bất kỳ định dạng markdown nào
+`;
 
 /**
  * @param contentText
