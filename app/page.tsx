@@ -1,3 +1,4 @@
+
 "use client"
 
 import type React from "react"
@@ -52,7 +53,7 @@ import { isImageFile, SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, type FileContent, pro
 
 type Role = "user" | "assistant"
 type Model = "chatgpt" | "gemini"
-type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini"
+type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini" | "perplexity-to-gemini"
 
 type ChatMessage = {
   id: string
@@ -930,52 +931,23 @@ export default function Page() {
     try {
       setInput("")
       setIsLoading(true)
+      const currentMessages = [...messages, userMessage]
+      setMessages(currentMessages)
 
-      const conversationHistory: any[] = []
-
-      // Add previous turns from the active session
-      if (active?.turns) {
-        active.turns.forEach((turn) => {
-          // Add user message
-          conversationHistory.push({
-            role: "user",
-            content: turn.user.content,
-          })
-
-          // Add assistant response based on selected model
-          const assistantContent = selectedModel === "gemini" ? turn.gemini.content : turn.chatgpt.content
-
-          if (assistantContent.trim()) {
-            conversationHistory.push({
-              role: "assistant",
-              content: assistantContent,
-            })
-          }
-        })
-      }
-
-      // Add current user message
-      const currentMessages = [...conversationHistory, userMessage]
-      setMessages([userMessage]) // Only show current message in UI
-
-      console.log("[v0] handleSend - Processing with conversation history:", {
+      console.log("[v0] handleSend - Processing files:", {
         attachmentsCount: attachments.length,
         fileContentsCount: fileContents.length,
         selectedWorkflow,
         deepSearch,
-        conversationHistoryLength: conversationHistory.length,
-        totalMessagesCount: currentMessages.length,
         workflowDescription:
           selectedWorkflow === "chatgpt-to-gemini"
             ? "ChatGPT will generate prompt for Gemini"
-            : selectedWorkflow === "tavily-to-gemini"
-              ? "Tavily search then Gemini response"
-              : "Direct Gemini processing",
+            : "Direct Gemini processing",
       })
 
       const response = await callDirectAPI(
         selectedModel,
-        currentMessages, // Now includes full conversation history
+        currentMessages,
         false,
         fileContents,
         selectedWorkflow,
@@ -1375,7 +1347,7 @@ export default function Page() {
                       Nghiên cứu sâu
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Quy trình xử lý</DropdownMenuLabel>
+                     <DropdownMenuLabel>Quy trình xử lý</DropdownMenuLabel>
                     <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "single"}
                       onCheckedChange={() => setSelectedWorkflow("single")}
@@ -1385,7 +1357,9 @@ export default function Page() {
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "tavily-to-gemini"}
-                      onCheckedChange={() => setSelectedWorkflow("tavily-to-gemini")}
+                      onCheckedChange={() =>
+                        setSelectedWorkflow("tavily-to-gemini")
+                      }
                     >
                       <Search className="mr-2 h-4 w-4 text-green-600" />
                       Tavily → Gemini
@@ -1395,14 +1369,33 @@ export default function Page() {
                         </span>
                       )}
                     </DropdownMenuCheckboxItem>
+
+                    <DropdownMenuCheckboxItem
+                        checked={selectedWorkflow === "perplexity-to-gemini"}
+                        onCheckedChange={() =>
+                            setSelectedWorkflow("perplexity-to-gemini")
+                        }
+                    >
+                        <Search className="mr-2 h-4 w-4 text-green-600" />
+                        Perplexity → Gemini
+                        {selectedWorkflow === "perplexity-to-gemini" && (
+                            <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                Đang hoạt động
+                            </span>
+                        )}
+                    </DropdownMenuCheckboxItem>
                     <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "chatgpt-to-gemini"}
-                      onCheckedChange={() => setSelectedWorkflow("chatgpt-to-gemini")}
+                      onCheckedChange={() =>
+                        setSelectedWorkflow("chatgpt-to-gemini")
+                      }
                     >
                       <FlaskConical className="mr-2 h-4 w-4 text-blue-600" />
                       ChatGPT → Gemini
                       {selectedWorkflow === "chatgpt-to-gemini" && (
-                        <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Đang hoạt động</span>
+                        <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                          Đang hoạt động
+                        </span>
                       )}
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
