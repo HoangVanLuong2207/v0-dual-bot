@@ -38,7 +38,11 @@ const MODEL_MAPPING = {
   "gemini-2.5-flash-live-preview-04-09": { provider: "google", model: "gemini-2.5-flash-live-preview-04-09" },
 }
 
-const genAI = GOOGLE_API_KEY ? new GoogleGenerativeAI(GOOGLE_API_KEY) : null
+// Function to get or create genAI instance with current GOOGLE_API_KEY
+function getGenAI() {
+  if (!GOOGLE_API_KEY) return null;
+  return new GoogleGenerativeAI(GOOGLE_API_KEY);
+}
 
 // Tavily search function
 async function searchWithTavily(query: string) {
@@ -110,6 +114,11 @@ export async function POST(request: NextRequest) {
     if (workflow === "perplexity-to-gemini") {
       return await handlePerplexityToGemini(messages, actualModel, stream, files)
     }
+    
+    // Workflow: perplexity-to-chatgpt-to-gemini (Perplexity search, then ChatGPT refines, then Gemini responds)
+    if (workflow === "perplexity-chatgpt-gemini") {
+      return await handlePerplexityChatGPTToGemini(messages, actualModel, stream, files)
+    }
 
     // Default: direct Gemini processing
     return await handleGoogle(messages, actualModel, stream, files)
@@ -121,6 +130,7 @@ export async function POST(request: NextRequest) {
 
 // Tavily-to-Gemini workflow handler
 async function handleTavilyToGemini(messages: any[], model: string, stream: boolean, files: any[]) {
+  const genAI = getGenAI();
   if (!GOOGLE_API_KEY || !genAI) {
     return NextResponse.json({ error: "Google API key not configured" }, { status: 500 })
   }
@@ -192,6 +202,10 @@ YÊU CẦU TRẢ LỜI:
 
     // Step 4: Call Gemini
     console.log("[Tavily-to-Gemini] Step 2: Calling Gemini")
+    const genAI = getGenAI();
+    if (!genAI) {
+      throw new Error("Google AI SDK initialization failed");
+    }
     const geminiModel = genAI.getGenerativeModel({ model })
 
     const result = await geminiModel.generateContent({
@@ -360,6 +374,7 @@ async function handleOpenAI(messages: any[], model: string, stream: boolean, fil
 }
 
 async function handleGoogle(messages: any[], model: string, stream: boolean, files: any[]) {
+  const genAI = getGenAI();
   if (!GOOGLE_API_KEY || !genAI) {
     return NextResponse.json({ error: "Google API key not configured" }, { status: 500 })
   }
@@ -496,6 +511,7 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
 
 // ChatGPT-to-Gemini workflow handler
 async function handleChatGPTToGemini(messages: any[], model: string, stream: boolean, files: any[]) {
+  const genAI = getGenAI();
   if (!GOOGLE_API_KEY || !genAI) {
     return NextResponse.json({ error: "Google API key not configured" }, { status: 500 })
   }
@@ -558,6 +574,10 @@ ${optimizedPrompt}`
 
     // Step 4: Call Gemini with optimized prompt
     console.log("[ChatGPT-to-Gemini] Step 2: Calling Gemini with optimized prompt")
+    const genAI = getGenAI();
+    if (!genAI) {
+      throw new Error("Google AI SDK initialization failed");
+    }
     const geminiModel = genAI.getGenerativeModel({ model })
 
     const result = await geminiModel.generateContent({
@@ -624,6 +644,7 @@ ${optimizedPrompt}`
 
 // Perplexity-to-Gemini workflow handler
 async function handlePerplexityToGemini(messages: any[], model: string, stream: boolean, files: any[]) {
+  const genAI = getGenAI();
   if (!GOOGLE_API_KEY || !genAI) {
     return NextResponse.json({ error: "Google API key not configured" }, { status: 500 })
   }
@@ -696,6 +717,10 @@ YÊU CẦU TRẢ LỜI:
 
     // Step 4: Call Gemini
     console.log("[Perplexity-to-Gemini] Step 2: Calling Gemini")
+    const genAI = getGenAI();
+    if (!genAI) {
+      throw new Error("Google AI SDK initialization failed");
+    }
     const geminiModel = genAI.getGenerativeModel({ model })
 
     const result = await geminiModel.generateContent({
@@ -773,6 +798,173 @@ YÊU CẦU TRẢ LỜI:
   }
 }
 
+// Perplexity-to-ChatGPT-to-Gemini workflow handler
+async function handlePerplexityChatGPTToGemini(messages: any[], model: string, stream: boolean, files: any[]) {
+  const genAI = getGenAI();
+  if (!GOOGLE_API_KEY || !genAI || !OPENAI_API_KEY) {
+    return NextResponse.json({ error: "API keys not configured" }, { status: 500 })
+  }
+
+  try {
+    // Step 1: Extract user question
+    const lastMessage = messages[messages.length - 1]
+    const userQuestion =
+      typeof lastMessage.content === "string"
+        ? lastMessage.content
+        : lastMessage.content?.find((c: any) => c.type === "text")?.text || ""
+
+    if (!userQuestion.trim()) {
+      return NextResponse.json({ error: "No question provided" }, { status: 400 })
+    }
+
+    // Step 2: Search with Perplexity-style search
+    console.log("[Perplexity-ChatGPT-Gemini] Step 1: Searching with Perplexity-style approach")
+    const searchResults = await searchWithPerplexityStyle(userQuestion)
+
+    // Step 3: Prepare context for ChatGPT
+    let searchContext = ""
+    if (searchResults?.results?.length > 0) {
+      searchContext = searchResults.results
+        .map((result: any, index: number) => 
+          `${index + 1}. ${result.title}\n${result.content}\nNguồn: ${result.url}`
+        )
+        .join("\n\n")
+    }
+
+    // Step 4: Call ChatGPT to refine the prompt
+    console.log("[Perplexity-ChatGPT-Gemini] Step 2: Refining with ChatGPT")
+    const chatGPTResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `Bạn là một trợ lý AI giúp cải thiện câu hỏi dựa trên ngữ cảnh tìm kiếm. 
+            Hãy tạo một prompt rõ ràng, chi tiết cho Gemini dựa trên câu hỏi và thông tin tìm kiếm.`,
+          },
+          {
+            role: "user",
+            content: `THÔNG TIN TÌM KIẾM:
+            ${searchContext}
+            
+            CÂU HỎI GỐC: ${userQuestion}
+            
+            YÊU CẦU:
+            1. Tạo một prompt chi tiết cho Gemini dựa trên thông tin tìm kiếm
+            2. Giữ nguyên ngữ cảnh quan trọng từ câu hỏi gốc
+            3. Thêm hướng dẫn rõ ràng về định dạng câu trả lời
+            4. Yêu cầu Gemini trả lời bằng tiếng Việt
+            5. Không sử dụng bất kỳ định dạng markdown nào trong prompt
+            
+            Chỉ trả về prompt đã tối ưu, không cần giải thích thêm.`,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    })
+
+    if (!chatGPTResponse.ok) {
+      throw new Error("Failed to get response from ChatGPT")
+    }
+
+    const chatGPTData = await chatGPTResponse.json()
+    const refinedPrompt = chatGPTData.choices[0]?.message?.content || userQuestion
+
+    // Step 5: Call Gemini with the refined prompt
+    console.log("[Perplexity-ChatGPT-Gemini] Step 3: Calling Gemini with refined prompt")
+    const genAI = getGenAI();
+    if (!genAI) {
+      throw new Error("Google AI SDK initialization failed");
+    }
+    
+    const geminiModel = genAI.getGenerativeModel({ 
+      model,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2000,
+      },
+    })
+    const result = await geminiModel.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{ text: refinedPrompt }]
+      }]
+    })
+    
+    const response = await result.response
+    let text = response.text()
+    
+    // Clean up any remaining markdown characters
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`(.*?)`/g, '$1')
+      .replace(/^#+\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^[-*+]\s+/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+    console.log("[Perplexity-ChatGPT-Gemini] Completed:", {
+      originalLength: text.length,
+      cleanedLength: cleanText.length,
+      searchResultsCount: searchResults?.results?.length || 0,
+    })
+
+    return NextResponse.json({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: cleanText }],
+            role: "model",
+          },
+          finishReason: "STOP",
+        },
+      ],
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: cleanText,
+          },
+        },
+      ],
+      searchResults,
+      workflow: "perplexity-chatgpt-gemini",
+      steps: {
+        step1: {
+          type: "perplexity_search",
+          query: userQuestion,
+          resultsCount: searchResults?.results?.length || 0,
+        },
+        step2: {
+          type: "chatgpt_refinement",
+          prompt: refinedPrompt,
+        },
+        step3: {
+          type: "gemini_response",
+          content: cleanText.substring(0, 200) + (cleanText.length > 200 ? "..." : ""),
+        },
+      },
+    })
+  } catch (error: any) {
+    console.error("Perplexity-ChatGPT-Gemini error:", error)
+    return NextResponse.json(
+      {
+        error: error?.message || "Failed to process Perplexity-ChatGPT-Gemini workflow",
+        errorType: "workflow_error",
+      },
+      { status: 500 },
+    )
+  }
+}
+
 // Perplexity-style search function (using Tavily with enhanced parameters)
 async function searchWithPerplexityStyle(query: string) {
   if (!TAVILY_API_KEY) {
@@ -822,6 +1014,7 @@ async function searchWithPerplexityStyle(query: string) {
 }
 
 async function uploadFilesToGeminiSDK(files: any[]) {
+  const genAI = getGenAI();
   if (!genAI) return []
 
   const uploadedFiles = []
@@ -1117,12 +1310,24 @@ async function convertToPromptChatGPT(contentText: string): Promise<string> {
 }
 
 async function processMessagesForGoogleSDK(messages: any[], files: any[], uploadedFiles: any[] = []) {
-  const processedContents = []
-  const prompts = []
+  const processedContents: Array<{
+    role: string;
+    parts: Array<{
+      text?: string;
+      inlineData?: { mimeType: string; data: string };
+      fileData?: { mimeType: string; fileUri: string };
+    }>;
+  }> = [];
+  
+  const prompts: Array<{ input: any; output: string }> = [];
 
   for (const message of messages) {
     const role = message.role === "assistant" ? "model" : "user"
-    const parts = []
+    const parts: Array<{
+      text?: string;
+      inlineData?: { mimeType: string; data: string };
+      fileData?: { mimeType: string; fileUri: string };
+    }> = [];
 
     // Add text content
     if (typeof message.content === "string") {
@@ -1157,7 +1362,7 @@ async function processMessagesForGoogleSDK(messages: any[], files: any[], upload
           if (matches) {
             const [, mimeType, base64Data] = matches
             console.log("Adding image part:", { mimeType })
-            ;(parts as any).push({
+            parts.push({
               inlineData: {
                 mimeType: mimeType,
                 data: base64Data,
@@ -1176,6 +1381,7 @@ async function processMessagesForGoogleSDK(messages: any[], files: any[], upload
     }
   }
 
+  // Add uploaded files to the last user message
   if (uploadedFiles.length > 0 && processedContents.length > 0) {
     const lastContent = processedContents[processedContents.length - 1]
     if (lastContent.role === "user") {
@@ -1185,7 +1391,7 @@ async function processMessagesForGoogleSDK(messages: any[], files: any[], upload
           uri: uploadedFile.fileUri,
           mimeType: uploadedFile.mimeType,
         })
-        ;(lastContent.parts as any).push({
+        lastContent.parts.push({
           fileData: {
             mimeType: uploadedFile.mimeType,
             fileUri: uploadedFile.fileUri,
@@ -1203,7 +1409,7 @@ async function processMessagesForGoogleSDK(messages: any[], files: any[], upload
         // Only use inlineData for images (Office files are uploaded)
         if (file.type.startsWith("image/")) {
           console.log("Adding inline image:", { type: file.type })
-          ;(lastContent.parts as any).push({
+          lastContent.parts.push({
             inlineData: {
               mimeType: file.type,
               data: file.data,
