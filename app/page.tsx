@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import { Lightbulb } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from "react"
 import { v4 as uuidv4 } from "uuid"
 import {
@@ -53,7 +53,7 @@ import { isImageFile, SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, type FileContent, pro
 
 type Role = "user" | "assistant"
 type Model = "chatgpt" | "gemini"
-type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini" | "perplexity-to-gemini"
+type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini" | "perplexity-to-gemini" | "perplexity-chatgpt-gemini"
 
 type ChatMessage = {
   id: string
@@ -971,7 +971,9 @@ export default function Page() {
             ? "ChatGPT will generate prompt for Gemini"
             : selectedWorkflow === "tavily-to-gemini"
               ? "Tavily search then Gemini response"
-              : "Direct Gemini processing",
+              : selectedWorkflow === "perplexity-chatgpt-gemini"
+                ? "Perplexity search, then ChatGPT refines, then Gemini responds"
+                : "Direct Gemini processing",
       })
 
       const response = await callDirectAPI(
@@ -1413,6 +1415,19 @@ export default function Page() {
                       <Zap className="mr-2 h-4 w-4 text-purple-600" />
                       Perplexity → Gemini
                       {selectedWorkflow === "perplexity-to-gemini" && (
+                        <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                          Đang hoạt động
+                        </span>
+                      )}
+                    </DropdownMenuCheckboxItem>
+                   
+                    <DropdownMenuCheckboxItem
+                      checked={selectedWorkflow === "perplexity-chatgpt-gemini"}
+                      onCheckedChange={() => setSelectedWorkflow("perplexity-chatgpt-gemini")}
+                    >
+                      <Lightbulb className="mr-2 h-4 w-4 text-purple-600" />
+                      Perplexity → ChatGPT → Gemini
+                      {selectedWorkflow === "perplexity-chatgpt-gemini" && (
                         <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
                           Đang hoạt động
                         </span>
