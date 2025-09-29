@@ -53,7 +53,7 @@ import { isImageFile, SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, type FileContent, pro
 
 type Role = "user" | "assistant"
 type Model = "chatgpt" | "gemini"
-type Workflow = "single" | "chatgpt-to-gemini" | "tavily-to-gemini" | "perplexity-to-gemini" | "perplexity-chatgpt-gemini"
+type Workflow = "single" | "chatgpt-to-gemini" | "perplexity-to-gemini" | "perplexity-chatgpt-gemini"
 
 type ChatMessage = {
   id: string
@@ -969,8 +969,8 @@ export default function Page() {
         workflowDescription:
           selectedWorkflow === "chatgpt-to-gemini"
             ? "ChatGPT will generate prompt for Gemini"
-            : selectedWorkflow === "tavily-to-gemini"
-              ? "Tavily search then Gemini response"
+            : selectedWorkflow === "perplexity-to-gemini"
+              ? "Perplexity search then Gemini response"
               : selectedWorkflow === "perplexity-chatgpt-gemini"
                 ? "Perplexity search, then ChatGPT refines, then Gemini responds"
                 : "Direct Gemini processing",
@@ -1387,18 +1387,6 @@ export default function Page() {
                       Trực tiếp (Gemini)
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuCheckboxItem
-                      checked={selectedWorkflow === "tavily-to-gemini"}
-                      onCheckedChange={() => setSelectedWorkflow("tavily-to-gemini")}
-                    >
-                      <Search className="mr-2 h-4 w-4 text-green-600" />
-                      Tavily → Gemini
-                      {selectedWorkflow === "tavily-to-gemini" && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                          Đang hoạt động
-                        </span>
-                      )}
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "chatgpt-to-gemini"}
                       onCheckedChange={() => setSelectedWorkflow("chatgpt-to-gemini")}
                     >
@@ -1420,7 +1408,7 @@ export default function Page() {
                         </span>
                       )}
                     </DropdownMenuCheckboxItem>
-                   
+
                     <DropdownMenuCheckboxItem
                       checked={selectedWorkflow === "perplexity-chatgpt-gemini"}
                       onCheckedChange={() => setSelectedWorkflow("perplexity-chatgpt-gemini")}
