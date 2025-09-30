@@ -9,6 +9,8 @@ const DEFAULT_PERPLEXITY_MODEL = "sonar-pro"
 const OPENAI_BASE_URL = "https://api.openai.com/v1"
 const GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
+const MAX_REFERENCES = 5
+
 // Model mapping to determine which API to use
 const MODEL_MAPPING = {
   // OpenAI models
@@ -48,6 +50,23 @@ function getPerplexityConfig() {
   const apiKey = PERPLEXITY_API_KEY?.trim() || undefined;
   const model = PERPLEXITY_MODEL?.trim() || DEFAULT_PERPLEXITY_MODEL;
   return { apiKey, model };
+}
+
+function stripReferenceSection(text: string) {
+  if (!text) return text;
+  const normalized = text.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const simplified = lines[i]
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    if (simplified.startsWith('nguon tham khao')) {
+      return lines.slice(0, i).join('\n').trim();
+    }
+  }
+  return normalized.trim();
 }
 
 export async function POST(request: NextRequest) {
@@ -184,8 +203,8 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
           '3. Sử dụng các dấu số thứ tự (1, 2, 3) để liệt kê nếu cần\n' +
           '4. Trả lời bằng tiếng Việt\n' +
           '5. Giữ câu trả lời ngắn gọn, súc tích\n' +
-          '6. Nếu có nguồn tham khảo, liệt kê ở cuối dưới dạng: Nguồn tham khảo:\n1) Tên nguồn - URL (URL phải là liên kết có thể nhấp, giữ nguyên dạng văn bản thuần)\n' +
-          '7. Nếu không có nguồn, ghi: Nguồn tham khảo: (không có)\n\n' +
+          '6. Không tự thêm phần "Nguồn tham khảo" trong câu trả lời; hệ thống sẽ hiển thị riêng nếu có dữ liệu kèm theo\n' +
+          '7. Nếu không có nguồn, chỉ cần trả lời nội dung chính xác, không bổ sung ghi chú nào\n\n' +
           'LƯU Ý QUAN TRỌNG: TUYỆT ĐỐI KHÔNG sử dụng bất kỳ định dạng markdown nào. Chỉ trả lời bằng văn bản thuần.'
       }]
     };
@@ -216,11 +235,16 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
       .replace(/^[-*+]\s+/gm, '')        // Remove list markers
       .replace(/\n{3,}/g, '\n\n')       // Normalize multiple newlines
       .trim();
+    const responseText = stripReferenceSection(cleanText);
+    const displayFiles = uploadedFiles.slice(0, MAX_REFERENCES);
     // Ensure sources section is formatted with clickable URLs
-    const sourcesSection = uploadedFiles.length > 0 
-      ? `Nguồn tham khảo:\n${uploadedFiles.map((file, index) => `${index + 1}) ${file.name} - ${file.fileUri}`).join('\n')}`
+    const sourcesSection = displayFiles.length > 0
+      ? `Nguồn tham khảo:
+${displayFiles.map((file, index) => `${index + 1}) ${file.name} - ${file.fileUri}`).join('\n')}`
       : 'Nguồn tham khảo: (không có)';
-    const finalText = cleanText + '\n\n' + sourcesSection;
+    const responseParts = responseText ? [responseText] : [];
+    responseParts.push(sourcesSection);
+    const finalText = responseParts.join('\n\n');
     console.log("Google Gemini SDK response received:", {
       originalLength: text.length,
       cleanedLength: cleanText.length,
@@ -442,29 +466,46 @@ async function handlePerplexityToGemini(messages: any[], model: string, stream: 
     if (searchAnswer) {
       searchSections.push(`TÓM TẮT TỪ NGUỒN TÌM KIẾM:\n${searchAnswer}`);
     }
+    let referencesText = ''
     if (researchResults.length > 0) {
-      const references = researchResults
+      const limitedResults = researchResults.slice(0, MAX_REFERENCES);
+      referencesText = limitedResults
         .map((result: any, index: number) => {
-          const title = result.title || `Nguồn ${index + 1}`;
-          const url = result.url || "(không có URL)";
-          const content = result.content || "";
+          const rawUrl = typeof result.url === 'string' ? result.url.trim() : '';
+          const url = rawUrl || '(khong co URL)';
+          let title = (
+            typeof result.title === 'string' && result.title.trim()
+          ) || (
+            typeof result.source === 'string' && result.source.trim()
+          ) || '';
+          if (!title && rawUrl) {
+            try {
+              const hostname = new URL(rawUrl).hostname.replace(/^www\./, '');
+              title = hostname || title;
+            } catch (error) {
+              // ignore invalid URL
+            }
+          }
+          if (!title) {
+            title = `Nguon ${index + 1}`;
+          }
+          const content = result.content || '';
           return `${index + 1}. ${title} - ${url}\n${content}`;
         })
-        .join("\n\n");
-      searchSections.push(`THAM KHẢO:\n${references}`);
+        .join('\n');
+      searchSections.push(`THAM KHAO:
+${referencesText}`);
     }
     // Construct enhanced prompt for Gemini
     const promptParts: string[] = [
-      "Bạn là một trợ lý AI hữu ích. Hãy trả lời câu hỏi dựa trên dữ liệu tìm kiếm được cung cấp từ Perplexity, tuân thủ các yêu cầu sau:\n" +
-      "1. Không sử dụng bất kỳ định dạng markdown nào (không **, ##, ```, v.v.)\n" +
-      "2. Trả lời bằng văn bản thuần, không cần xuống dòng thừa\n" +
-      "3. Sử dụng các dấu số thứ tự (1, 2, 3) để liệt kê các ý chính nếu cần\n" +
-      "4. Trả lời bằng tiếng Việt\n" +
-      "5. Tổng hợp thông tin từ dữ liệu tìm kiếm (tóm tắt và tham khảo) để trả lời câu hỏi\n" +
-      "6. Chỉ sử dụng các nguồn từ dữ liệu tìm kiếm của Perplexity để tạo phần Nguồn tham khảo\n" +
-      "7. Kết thúc câu trả lời bằng phần: Nguồn tham khảo:\n1) Tên nguồn - URL (URL phải là liên kết có thể nhấp, giữ nguyên dạng văn bản thuần)\n" +
-      "8. Nếu không có nguồn từ Perplexity, ghi: Nguồn tham khảo: (không có)\n" +
-      "LƯU Ý QUAN TRỌNG: TUYỆT ĐỐI KHÔNG sử dụng bất kỳ định dạng markdown nào hoặc thêm nguồn từ các file đã upload. Chỉ trả lời bằng văn bản thuần."
+      'Ban la mot tro ly AI huu ich. Hay tra loi cau hoi dua tren du lieu tim kiem duoc cung cap tu Perplexity, tuan thu cac yeu cau sau:\n' +
+      '1. Khong su dung bat ky dinh dang markdown nao (khong **, ##, ``` , v.v.)\n' +
+      '2. Tra loi bang van ban thuan, khong can xuong dong thua\n' +
+      '3. Su dung cac dau so thu tu (1, 2, 3) de liet ke cac y chinh neu can\n' +
+      '4. Tra loi bang tieng Viet\n' +
+      '5. Chi tong hop thong tin duoc cung cap tu Perplexity, khong them nguon ben ngoai\n' +
+      '6. Khong chen phan "Nguon tham khao" trong cau tra loi; he thong se hien thi phan nay tu du lieu dau vao\n' +
+      '7. Neu can nhac den nguon, chi de cap ten hoac nguon goc trong noi dung, khong dinh kem URL trong cau tra loi'
     ];
     if (conversationContext) {
       promptParts.push(`Ngữ cảnh cuộc trò chuyện:\n${conversationContext}`);
@@ -507,6 +548,13 @@ async function handlePerplexityToGemini(messages: any[], model: string, stream: 
       .replace(/^[-*+]\s+/gm, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    const responseText = stripReferenceSection(cleanText);
+    const responseParts = responseText ? [responseText] : [];
+    if (referencesText) {
+      responseParts.push(`Nguồn tham khảo:
+${referencesText}`);
+    }
+    const finalText = responseParts.length > 0 ? responseParts.join('\n\n') : responseText;
     console.log("[Perplexity-to-Gemini] Completed:", {
       originalLength: text.length,
       cleanedLength: cleanText.length,
@@ -517,7 +565,7 @@ async function handlePerplexityToGemini(messages: any[], model: string, stream: 
       candidates: [
         {
           content: {
-            parts: [{ text: cleanText }],
+            parts: [{ text: finalText }],
             role: "model",
           },
           finishReason: "STOP",
@@ -527,7 +575,7 @@ async function handlePerplexityToGemini(messages: any[], model: string, stream: 
         {
           message: {
             role: "assistant",
-            content: cleanText,
+            content: finalText,
           },
         },
       ],
@@ -544,7 +592,7 @@ async function handlePerplexityToGemini(messages: any[], model: string, stream: 
       step2: {
         type: "gemini_response",
         promptLength: enhancedPrompt.length,
-        content: cleanText.substring(0, 200) + (cleanText.length > 200 ? "..." : ""),
+        content: finalText.substring(0, 200) + (finalText.length > 200 ? "..." : ""),
       },
     });
   } catch (error: any) {
@@ -595,19 +643,38 @@ async function handlePerplexityChatGPTToGemini(messages: any[], model: string, s
       sampleResults: researchResults.slice(0, 2),
     });
     const searchContextSections: string[] = [];
+    let chatReferencesText = '';
     if (searchAnswer) {
       searchContextSections.push(`Summary:\n${searchAnswer}`);
     }
     if (researchResults.length > 0) {
-      const references = researchResults
+      const limitedResults = researchResults.slice(0, MAX_REFERENCES);
+      chatReferencesText = limitedResults
         .map((result: any, index: number) => {
-          const title = result.title || `Source ${index + 1}`;
-          const url = result.url || "(không có URL)";
-          const content = result.content || "";
+          const rawUrl = typeof result.url === 'string' ? result.url.trim() : '';
+          const url = rawUrl || '(khong co URL)';
+          let title = (
+            typeof result.title === 'string' && result.title.trim()
+          ) || (
+            typeof result.source === 'string' && result.source.trim()
+          ) || '';
+          if (!title && rawUrl) {
+            try {
+              const hostname = new URL(rawUrl).hostname.replace(/^www\./, '');
+              title = hostname || title;
+            } catch (error) {
+              // ignore invalid URL
+            }
+          }
+          if (!title) {
+            title = `Nguon ${index + 1}`;
+          }
+          const content = result.content || '';
           return `${index + 1}. ${title} - ${url}\n${content}`;
         })
-        .join("\n\n");
-      searchContextSections.push(`References:\n${references}`);
+        .join('\n');
+      searchContextSections.push(`References:
+${chatReferencesText}`);
     }
     const searchContext = searchContextSections.join("\n\n") || "No additional research data was returned.";
     console.log("[Perplexity-ChatGPT-Gemini] Step 2: Refining with ChatGPT");
@@ -637,7 +704,8 @@ TASK:
 2. Preserve any critical details from the original question.
 3. Provide explicit guidance on how Gemini should structure the reply.
 4. Require Gemini to answer in Vietnamese plain text without Markdown symbols.
-5. Instruct Gemini to end the answer with "Nguồn tham khảo:" and list each source on separate lines using the format "1) Tên nguồn - URL" (use the real link). If there are no sources, instruct it to write "Nguồn tham khảo: (không có)".
+5. Remind Gemini to use only the provided research information and not invent additional sources.
+6. Do not instruct Gemini to add a "Nguon tham khao" section; the system will present references separately.
 
 Return only the optimized prompt.`,
           },
@@ -678,6 +746,13 @@ Return only the optimized prompt.`,
       .replace(/^[-*+]\s+/gm, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    const responseText = stripReferenceSection(cleanText);
+    const responseParts = responseText ? [responseText] : [];
+    if (chatReferencesText) {
+      responseParts.push(`Nguồn tham khảo:
+${chatReferencesText}`);
+    }
+    const finalText = responseParts.length > 0 ? responseParts.join('\n\n') : responseText;
     console.log("[Perplexity-ChatGPT-Gemini] Completed:", {
       originalLength: text.length,
       cleanedLength: cleanText.length,
@@ -688,7 +763,7 @@ Return only the optimized prompt.`,
       candidates: [
         {
           content: {
-            parts: [{ text: cleanText }],
+            parts: [{ text: finalText }],
             role: "model",
           },
           finishReason: "STOP",
@@ -698,12 +773,13 @@ Return only the optimized prompt.`,
         {
           message: {
             role: "assistant",
-            content: cleanText,
+            content: finalText,
           },
         },
       ],
       searchResults,
       workflow: "perplexity-chatgpt-gemini",
+      referencesText: chatReferencesText,
       steps: {
         step1: {
           type: "perplexity_search",
@@ -719,7 +795,7 @@ Return only the optimized prompt.`,
         },
         step3: {
           type: "gemini_response",
-          content: cleanText.substring(0, 200) + (cleanText.length > 200 ? "..." : ""),
+          content: finalText.substring(0, 200) + (finalText.length > 200 ? "..." : ""),
         },
       },
     });
@@ -1112,7 +1188,7 @@ User hỏi → Bạn tạo prompt → Prompt gửi cho Gemini → Gemini trả l
 QUY TẮC SINH PROMPT:
 1. Nếu user chỉ chào hỏi (hi, hello, xin chào) → Trả lời: "Xin chào! Tôi có thể giúp gì cho bạn?"
 2. Nếu user hỏi thông tin → Sinh prompt theo mẫu này:
-"Bạn là một trợ lý AI hữu ích. Hãy trả lời câu hỏi sau một cách rõ ràng, dễ hiểu:\n\nCâu hỏi: [câu hỏi user]\n\nYêu cầu:\n- Không sử dụng bất kỳ ký hiệu markdown nào như **, ##, \`\`\`, v.v.\n- Trình bày thông tin rõ ràng, mạch lạc\n- Sử dụng các số thứ tự (1, 2, 3) để liệt kê các ý chính\n- Mỗi ý chính nên có phần tóm tắt ngắn gọn và giải thích chi tiết\n- Nếu có nguồn tham khảo, hãy ghi rõ ở cuối câu trả lời\n- Luôn trả lời bằng tiếng Việt\n- Tuyệt đối không sử dụng bất kỳ ký hiệu đặc biệt nào để định dạng văn bản"
+"Bạn là một trợ lý AI hữu ích. Hãy trả lời câu hỏi sau một cách rõ ràng, dễ hiểu:\n\nCâu hỏi: [câu hỏi user]\n\nYêu cầu:\n- Không sử dụng bất kỳ ký hiệu markdown nào như **, ##, \`\`\`, v.v.\n- Trình bày thông tin rõ ràng, mạch lạc\n- Sử dụng các số thứ tự (1, 2, 3) để liệt kê các ý chính\n- Mỗi ý chính nên có phần tóm tắt ngắn gọn và giải thích chi tiết\n- Nếu có nguồn tham khảo, chỉ liệt kê tối đa 5 nguồn ở cuối câu trả lời\n- Luôn trả lời bằng tiếng Việt\n- Tuyệt đối không sử dụng bất kỳ ký hiệu đặc biệt nào để định dạng văn bản"
 
 CHÚ Ý:
 - [câu hỏi user] = copy y nguyên câu hỏi của user
