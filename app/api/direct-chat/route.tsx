@@ -179,7 +179,7 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
     return NextResponse.json({ error: "Google API key not configured" }, { status: 500 })
   }
   try {
-    console.log("messages 👉", messages, files)
+    console.log("messages ->", messages, files)
     const uploadedFiles = await uploadFilesToGeminiSDK(files)
     const { processedContents, prompts } = await processMessagesForGoogleSDK(messages, files, uploadedFiles)
     console.log("Sending request to Google Gemini SDK:", {
@@ -197,15 +197,17 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
     const systemInstruction = {
       role: 'user',
       parts: [{
-        text: 'Bạn là một trợ lý AI hữu ích. Khi trả lời câu hỏi, vui lòng tuân thủ các yêu cầu sau:\n' +
-          '1. Không sử dụng bất kỳ định dạng markdown nào (không **, ##, ```, v.v.)\n' +
-          '2. Trả lời bằng văn bản thuần, không cần xuống dòng thừa\n' +
-          '3. Sử dụng các dấu số thứ tự (1, 2, 3) để liệt kê nếu cần\n' +
-          '4. Trả lời bằng tiếng Việt\n' +
-          '5. Giữ câu trả lời ngắn gọn, súc tích\n' +
-          '6. Không tự thêm phần "Nguồn tham khảo" trong câu trả lời; hệ thống sẽ hiển thị riêng nếu có dữ liệu kèm theo\n' +
-          '7. Nếu không có nguồn, chỉ cần trả lời nội dung chính xác, không bổ sung ghi chú nào\n\n' +
-          'LƯU Ý QUAN TRỌNG: TUYỆT ĐỐI KHÔNG sử dụng bất kỳ định dạng markdown nào. Chỉ trả lời bằng văn bản thuần.'
+        text: [
+          'Ban la mot tro ly AI huu ich. Khi tra loi cau hoi, vui long tuan thu cac yeu cau sau:\n',
+          '1. Khong su dung bat ky dinh dang markdown nao (khong **, ##, ``` , v.v.)\n',
+          '2. Tra loi bang van ban thuan, khong can xuong dong thua\n',
+          '3. Su dung cac dau so thu tu (1, 2, 3) de liet ke neu can\n',
+          '4. Tra loi bang tieng Viet\n',
+          '5. Trinh bay cau tra loi theo dang bao cao, danh so ro rang cho cac muc (1., 1.1., ...) va moi muc co tieu de ngan gon\n',
+          '6. Khong tu them phan "Nguon tham khao" trong cau tra loi; he thong se hien thi rieng neu co du lieu kem theo\n',
+          '7. Neu khong co nguon, chi can tra loi noi dung chinh xac, khong bo sung ghi chu nao\n\n',
+          'LUU Y QUAN TRONG: TUYET DOI KHONG su dung bat ky dinh dang markdown nao. Chi tra loi bang van ban thuan.'
+        ].join('')
       }]
     };
     const geminiModel = genAI.getGenerativeModel({ 
@@ -239,9 +241,9 @@ async function handleGoogle(messages: any[], model: string, stream: boolean, fil
     const displayFiles = uploadedFiles.slice(0, MAX_REFERENCES);
     // Ensure sources section is formatted with clickable URLs
     const sourcesSection = displayFiles.length > 0
-      ? `Nguồn tham khảo:
+      ? `Nguon tham khao:
 ${displayFiles.map((file, index) => `${index + 1}) ${file.name} - ${file.fileUri}`).join('\n')}`
-      : 'Nguồn tham khảo: (không có)';
+      : 'Nguon tham khao: (khong co)';
     const responseParts = responseText ? [responseText] : [];
     responseParts.push(sourcesSection);
     const finalText = responseParts.join('\n\n');
@@ -503,9 +505,10 @@ ${referencesText}`);
       '2. Tra loi bang van ban thuan, khong can xuong dong thua\n' +
       '3. Su dung cac dau so thu tu (1, 2, 3) de liet ke cac y chinh neu can\n' +
       '4. Tra loi bang tieng Viet\n' +
-      '5. Chi tong hop thong tin duoc cung cap tu Perplexity, khong them nguon ben ngoai\n' +
-      '6. Khong chen phan "Nguon tham khao" trong cau tra loi; he thong se hien thi phan nay tu du lieu dau vao\n' +
-      '7. Neu can nhac den nguon, chi de cap ten hoac nguon goc trong noi dung, khong dinh kem URL trong cau tra loi'
+      '5. Trinh bay cau tra loi theo dang bao cao, danh so ro rang cho cac muc va moi muc co tieu de ngan gon\n' +
+      '6. Chi tong hop thong tin duoc cung cap tu Perplexity, khong them nguon ben ngoai\n' +
+      '7. Khong chen phan "Nguon tham khao" trong cau tra loi; he thong se hien thi phan nay tu du lieu dau vao\n' +
+      '8. Neu can nhac den nguon, chi de cap ten hoac nguon goc trong noi dung, khong dinh kem URL trong cau tra loi'
     ];
     if (conversationContext) {
       promptParts.push(`Ngữ cảnh cuộc trò chuyện:\n${conversationContext}`);
@@ -551,7 +554,7 @@ ${referencesText}`);
     const responseText = stripReferenceSection(cleanText);
     const responseParts = responseText ? [responseText] : [];
     if (referencesText) {
-      responseParts.push(`Nguồn tham khảo:
+      responseParts.push(`Nguon tham khao:
 ${referencesText}`);
     }
     const finalText = responseParts.length > 0 ? responseParts.join('\n\n') : responseText;
@@ -704,8 +707,9 @@ TASK:
 2. Preserve any critical details from the original question.
 3. Provide explicit guidance on how Gemini should structure the reply.
 4. Require Gemini to answer in Vietnamese plain text without Markdown symbols.
-5. Remind Gemini to use only the provided research information and not invent additional sources.
-6. Do not instruct Gemini to add a "Nguon tham khao" section; the system will present references separately.
+5. Instruct Gemini to present the answer like a structured report with numbered sections and clear headings (1., 1.1., ...).
+6. Remind Gemini to use only the provided research information and not invent additional sources.
+7. Do not instruct Gemini to add a "Nguon tham khao" section; the system will present references separately.
 
 Return only the optimized prompt.`,
           },
@@ -749,7 +753,7 @@ Return only the optimized prompt.`,
     const responseText = stripReferenceSection(cleanText);
     const responseParts = responseText ? [responseText] : [];
     if (chatReferencesText) {
-      responseParts.push(`Nguồn tham khảo:
+      responseParts.push(`Nguon tham khao:
 ${chatReferencesText}`);
     }
     const finalText = responseParts.length > 0 ? responseParts.join('\n\n') : responseText;
@@ -1180,20 +1184,33 @@ async function processMessagesForOpenAI(messages: any[], files: any[]) {
 }
 
 const CONTENT_SYSTEM = `
-Bạn là Chatbot ORS. Nhiệm vụ: nhận câu hỏi của user, sinh ra prompt đơn giản cho Gemini.
+Ban la Chatbot ORS. Nhiem vu: nhan cau hoi cua user, sinh ra prompt don gian cho Gemini.
 
-LUỒNG XỬ LÝ:
-User hỏi → Bạn tạo prompt → Prompt gửi cho Gemini → Gemini trả lời
+LUONG XU LY:
+User hoi -> Ban tao prompt -> Prompt gui cho Gemini -> Gemini tra loi
 
-QUY TẮC SINH PROMPT:
-1. Nếu user chỉ chào hỏi (hi, hello, xin chào) → Trả lời: "Xin chào! Tôi có thể giúp gì cho bạn?"
-2. Nếu user hỏi thông tin → Sinh prompt theo mẫu này:
-"Bạn là một trợ lý AI hữu ích. Hãy trả lời câu hỏi sau một cách rõ ràng, dễ hiểu:\n\nCâu hỏi: [câu hỏi user]\n\nYêu cầu:\n- Không sử dụng bất kỳ ký hiệu markdown nào như **, ##, \`\`\`, v.v.\n- Trình bày thông tin rõ ràng, mạch lạc\n- Sử dụng các số thứ tự (1, 2, 3) để liệt kê các ý chính\n- Mỗi ý chính nên có phần tóm tắt ngắn gọn và giải thích chi tiết\n- Nếu có nguồn tham khảo, chỉ liệt kê tối đa 5 nguồn ở cuối câu trả lời\n- Luôn trả lời bằng tiếng Việt\n- Tuyệt đối không sử dụng bất kỳ ký hiệu đặc biệt nào để định dạng văn bản"
+QUY TAC SINH PROMPT:
+1. Neu user chi chao hoi (hi, hello, xin chao) -> Tra loi: "Xin chao! Toi co the giup gi cho ban?"
+2. Neu user hoi thong tin -> Sinh prompt theo mau nay:
 
-CHÚ Ý:
-- [câu hỏi user] = copy y nguyên câu hỏi của user
-- Chỉ xuất prompt, không giải thích gì thêm
-- Đảm bảo prompt yêu cầu Gemini không sử dụng bất kỳ định dạng markdown nào
+Ban la mot tro ly AI huu ich. Hay tra loi cau hoi sau mot cach ro rang, de hieu:
+
+Cau hoi: [cau hoi user]
+
+Yeu cau:
+- Khong su dung bat ky ky hieu markdown nao nhu **, ##, \`\`\`, v.v.
+- Trinh bay thong tin ro rang, mach lac
+- Su dung cac so thu tu (1, 2, 3) de liet ke cac y chinh
+- Trinh bay cau tra loi theo dang bao cao voi cac muc duoc danh so ro rang (1., 1.1., ...), moi muc co tieu de ngan gon va noi dung chi tiet
+- Moi y chinh nen co phan tom tat ngan gon va giai thich chi tiet
+- Neu co nguon tham khao, chi liet ke toi da 5 nguon o cuoi cau tra loi
+- Luon tra loi bang tieng Viet
+- Tuyet doi khong su dung bat ky ky hieu dac biet nao de dinh dang van ban
+
+CHU Y:
+- [cau hoi user] = copy y nguyen cau hoi cua user
+- Chi xuat prompt, khong giai thich gi them
+- Dam bao prompt yeu cau Gemini khong su dung bat ky dinh dang markdown nao
 `;
 
 async function convertToPromptChatGPT(contentText: string): Promise<string> {
