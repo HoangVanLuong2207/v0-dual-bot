@@ -535,9 +535,21 @@ function MessageBubble({ role, content }: { role: Role; content: string }) {
 
 // Convert Gemini response to HTML
 const convertToHtml = (text: string) => {
-  return text.replace(
-    /(\d+\.\s*)(.*?)\n(.*?)\nNguồn:\s*(.*?)(?=\n\d+\.|$)/gs,
-    "<div><h3>$1$2</h3><p>$3</p><p><strong>Nguồn:</strong> $4</p></div>",
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  const urlRegex = /(https?:\/\/[^\s]+)/g
+
+  const escaped = escapeHtml(text)
+
+  return escaped.replace(
+    urlRegex,
+    (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
   )
 }
 
