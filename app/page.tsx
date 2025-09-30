@@ -834,7 +834,7 @@ export default function Page() {
   const [attachments, setAttachments] = useState<Attached[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [selectedModel, setSelectedModel] = useState<Model>("gemini")
-  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow>("single")
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow>("perplexity-to-gemini")
   const [fileContents, setFileContents] = useState<FileContent[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
